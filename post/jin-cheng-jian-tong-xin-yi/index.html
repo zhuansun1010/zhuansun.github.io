@@ -1,0 +1,761 @@
+<html>
+  <head>
+    <meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>进程间通信（一） | Gridea</title>
+<link rel="shortcut icon" href="https://zhuansun.github.io/favicon.ico?v=1655736115309">
+<link href="https://cdn.jsdelivr.net/npm/remixicon@2.3.0/fonts/remixicon.css" rel="stylesheet">
+<link rel="stylesheet" href="https://zhuansun.github.io/styles/main.css">
+<link rel="alternate" type="application/atom+xml" title="进程间通信（一） | Gridea - Atom Feed" href="https://zhuansun.github.io/atom.xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Droid+Serif:400,700">
+
+
+
+    <meta name="description" content="一、进程间通信简介
+由于每个进程都有自己独立的运行环境，因此进程与进程间是相对封闭的。如何让两个封闭的进程之间实现数据通信是进程编程的重点与难点。
+Linux内的进程通信机制基本来源于Unix系统。对Unix发展做出巨大贡献的两大主力——A..." />
+    <meta name="keywords" content="" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.10.0/katex.min.css">
+    <script src="https://cdn.bootcss.com/highlight.js/9.12.0/highlight.min.js"></script>
+  </head>
+  <body>
+    <div class="main">
+      <div class="main-content">
+        <div class="site-header">
+  <a href="https://zhuansun.github.io">
+  <img class="avatar" src="https://zhuansun.github.io/images/avatar.png?v=1655736115309" alt="">
+  </a>
+  <h1 class="site-title">
+    Gridea
+  </h1>
+  <p class="site-description">
+    温故而知新
+  </p>
+  <div class="menu-container">
+    
+      
+        <a href="/" class="menu">
+          首页
+        </a>
+      
+    
+      
+        <a href="/archives" class="menu">
+          归档
+        </a>
+      
+    
+      
+        <a href="/tags" class="menu">
+          标签
+        </a>
+      
+    
+      
+        <a href="/post/about" class="menu">
+          关于
+        </a>
+      
+    
+  </div>
+  <div class="social-container">
+    
+      
+    
+      
+    
+      
+    
+      
+    
+      
+    
+  </div>
+</div>
+
+        <div class="post-detail">
+          <article class="post">
+            <h2 class="post-title">
+              进程间通信（一）
+            </h2>
+            <div class="post-info">
+              <span>
+                2022-06-20
+              </span>
+              <span>
+                31 min read
+              </span>
+              
+            </div>
+            
+            <div class="post-content-wrapper">
+              <div class="post-content">
+                <p>一、进程间通信简介<br>
+由于每个进程都有自己独立的运行环境，因此进程与进程间是相对封闭的。如何让两个封闭的进程之间实现数据通信是进程编程的重点与难点。<br>
+Linux内的进程通信机制基本来源于Unix系统。对Unix发展做出巨大贡献的两大主力——AT&amp;T公司的贝尔实验室和加州大学伯克利分校——在进程通信领域研究的侧重点不同。<br>
+贝尔实验室对Unix系统早期的进程间通信手段进行了改进与扩充，形成了System V IPC（Inter-Process Communication，进程间通信）。互相通信的进程被限定在单个计算机内。而伯克利分校则跳出了System V IPC的限制，发展出了以套接字（socket）为基本点的进程间通信机制。<br>
+Linux系统将二者的优势全部继承下来。现在Linux系统内比较常用的进程间通信方式有以下几种：<br>
+-传统UNIX系统内的进程通信方式：<br>
+1）无名管道（pipe）和有名管道（fifo）：<br>
+管道提供了进程间通信消息传递的实体，其原型来自于数据结构的“队列”。无名管道用于具有亲缘关系的进程（例如父子进程、兄弟进程），而有名管道则允许不具有亲缘关系的进程使用。<br>
+2）信号（signal）：<br>
+信号是在软件层面上对中断的一种模拟机制，用于通知进程某个事件发生。<br>
+-System V IPC进程通信方式：<br>
+3）消息队列（message queue）：<br>
+消息队列是消息所构成的链表，包括POSIX消息队列与System V消息队列两种。消息队列克服了管道与信号两种通信方式中信息量有限的缺点。<br>
+4）共享内存（shared memory）：<br>
+最有效的进程通信方式。它使得多个进程共享一块内存空间，不同进程间可以实时观察到其他进程的数据更新。不过使用该方式需要某种同步与互斥机制。<br>
+5）信号量（semaphore）：<br>
+主要作为进程间以及同一进程的不同线程间的同步与互斥手段。<br>
+-BSD进程通信方式：<br>
+6）套接字（socket）：<br>
+更广泛的进程通信机制，常用于网络的不同主机之间的进程通信。<br>
+在本课程中我们只学习前5中进程间通信的方式，而第6中（套接字通信socket）将会在后续的网络课程中详细学习。</p>
+<p>二、管道通信——无名管道pipe<br>
+管道是Linux中进程间通信的一种常用方式，它将一个程序的输出直接作为另一个程序的输入。Linux内的管道通信主要有无名管道与有名管道两种。<br>
+1、无名管道简介<br>
+无名管道是Unix系统内一种原始的进程通信方法。使用无名管道需要注意：<br>
+1.只能用于具有亲缘关系的进程间通信（父子进程、兄弟进程）<br>
+2.半双工通信模式，即无法同时读写管道。管道具有固定的读端与写端<br>
+3.管道可以看做特殊的文件，可以使用read()/write()函数对管道进行读写操作（但是不能使用lseek()进行定位操作）。不过管道不属于文件系统，并且只存放在内存中<br>
+//见附图6<br>
+2、无名管道编程<br>
+无名管道是基于文件描述符的通信方式。当一个管道被创建时，它会创建两个文件描述符fd[0]与fd[1]，其中fd[0]固定用于读管道内容，fd[1]固定用于写管道内容。<br>
+函数pipe()<br>
+所需头文件：#include&lt;unistd.h&gt;<br>
+函数原型：int pipe(int fd[])<br>
+函数参数：<br>
+fd[]    包含两个文件描述符的数组，其中fd[0]固定用于读管道，fd[1]固定用于写管道<br>
+函数返回值：<br>
+成功：0<br>
+失败：-1<br>
+创建管道使用pipe()函数，而其余的操作诸如读取管道read()、写入管道write()、关闭管道close()函数与文件IO的函数使用方式相同，这里不再赘述。<br>
+那么如何使用无名管道实现父子进程间的通信呢？<br>
+由于无名管道具有固定的读端与写端，因此，如果父子进程需要使用无名管道进行通信，可以进行以下操作：<br>
+父进程-&gt;子进程：父进程对自己的fd[1]执行写操作，数据流入管道内，然后子进程对自己的fd[0]执行读操作，得到管道内数据<br>
+子进程-&gt;父进程：子进程对自己的fd[1]执行写操作，数据流入管道内，然后父进程对自己的fd[0]执行读操作，得到管道内数据<br>
+注意：无名管道的工作方式是半双工方式，即在一个进程内要么读管道，要么写管道，无法同时进行读写操作。也就是说，在同一时刻内，要么父进程写数据、子进程读数据（父进程-&gt;子进程），要么子进程写数据、父进程读数据（子进程-&gt;父进程），数据流动方向唯一，不能同时存在两个数据流动方向。在使用时，对于该进程内未使用的文件描述符应当关闭。<br>
+示例：使用无名管道实现父子进程间的通信（子进程-&gt;父进程）<br>
+使用无名管道编程时需要注意以下事项：<br>
+1.无名管道只能用于具有亲缘关系的进程间（通常是父子进程间）<br>
+2.fd[0]固定用于读取管道，fd[1]固定用于写入管道，两个文件描述符不可弄混否则会报错<br>
+3.只有管道存在读端，向管道内写入数据才有意义，否则会返回SIGPIPE信号报错<br>
+4.如果管道使用完毕，关闭所有的文件描述符即可<br>
+#include&lt;stdio.h&gt;<br>
+#include&lt;stdlib.h&gt;<br>
+#include&lt;unistd.h&gt;<br>
+#include&lt;string.h&gt;<br>
+#define MAXLEN 100<br>
+int main()<br>
+{<br>
+int n;<br>
+int fd[2];<br>
+pid_t pid;<br>
+char message[MAXLEN]={0};<br>
+if(pipe(fd)&lt;0)//创建一个无名管道<br>
+{<br>
+perror(&quot;cannot create a pipe&quot;);<br>
+exit(0);<br>
+}<br>
+if((pid = fork())&lt;0)//创建子进程<br>
+{<br>
+perror(&quot;cannot fork&quot;);<br>
+exit(0);<br>
+}<br>
+else if(pid==0)//子进程<br>
+{<br>
+printf(&quot;This is Child Process\n&quot;);<br>
+close(fd[0]);//关闭该进程内的fd[0]（读端），保留fd[1]（写端），即接下来对该管道进行写操作<br>
+strcpy(message,&quot;Helloworld\n&quot;);<br>
+write(fd[1],message,strlen(message));<br>
+close(fd[1]);//管道使用完毕，关闭fd[1]<br>
+}<br>
+else//父进程<br>
+{<br>
+printf(&quot;This is Parent Process\n&quot;);<br>
+close(fd[1]);//关闭该进程内的fd[1]（写端），保留fd[0]（读端），即接下来对该管道进行读操作<br>
+sleep(1);//保证子进程先写数据<br>
+n = read(fd[0],message,MAXLEN);<br>
+printf(&quot;Parent read %d characters, Message is:%s&quot;,n,message);<br>
+close(fd[0]);//管道使用完毕，关闭fd[0]<br>
+waitpid(pid,NULL,0);//父进程等待回收子进程<br>
+}<br>
+return 0;<br>
+}<br>
+/<em><strong><strong><strong><strong><strong><strong><strong><strong><strong>管道的方向与流管道</strong></strong></strong></strong></strong></strong></strong></strong></strong></em>***/<br>
+细心的同学可能发现，我们在示例程序中使用管道的时候，关闭了父进程的写端与子进程的读端，相当于强行规定了管道的数据流动方向（子进程-&gt;父进程）。那么如果我们想复用该管道传输数据，实现“父进程-&gt;子进程”该怎么办呢？<br>
+非常遗憾，我们无法改变已经确定数据传输方向的管道的方向，即无法复用管道实现“父进程-&gt;子进程”的功能。那么管道为什么必须有方向呢？<br>
+实际上，管道方向算是一个历史遗留问题。管道通信是UNIX系统内最古老的通信方式。在早期的内核代码中，由于技术受限以及硬件性能不足，管道是必须确定方向的。现在的操作系统虽然已经足够强大，但是“管道必须确定传输方向”还是被保留下来。出于内核移植性的考虑，我们在使用管道的时候也必须确定管道的数据传输方向。<br>
+那么，有没有能够双向传输数据的管道呢？实际上是存在的，这种管道叫做“流管道”。使用流管道可以实现数据在管道内的双向流动。<br>
+如果想创建一个流管道，可以使用s_pipe()函数。遗憾的是，流管道只存在极个别的操作系统中。Linux系统是不支持流管道的。如果想使用流管道，我们可以使用socketpair()函数来模拟流管道。有关socketpair()函数的使用以及流管道的相关知识请同学们课外查阅资料，这里不再赘述。<br>
+/<em><strong><strong><strong><strong><strong><strong><strong><strong><strong>管道的方向与流管道end</strong></strong></strong></strong></strong></strong></strong></strong></strong></em>/<br>
+三、管道通信——有名管道fifo<br>
+1、有名管道简介<br>
+无名管道的使用范围比较狭隘，因为它只能实现有亲缘的进程之间的通信任务。如果想使用管道实现没有亲缘关系的进程间通信，我们可以采用有名管道的方式。<br>
+有名管道可以实现互不相干的两个进程之间的通信。有名管道在文件系统中可见，而且可以通过路径访问。进程通过文件IO的方式来读写管道内的数据。但是无法使用lseek()函数进行定位操作。<br>
+//有名管道的原型来自于数据结构的队列，因此有名管道遵循“先进先出”的原则，这也是有名管道的名称(FIFO)的由来。<br>
+除了本地通信外，有名管道的另一个典型应用是在网络中的客户机——服务器之间传输数据。如果有一个服务器，这个服务器与许多客户机有关，那么该服务器会创建一个“众所周知的FIFO”（即所有的客户机都知道该FIFO的访问路径），所有的客户机都可以使用该“众所周知的FIFO”向服务器提出请求。<br>
+但是这种通信方式的问题是，服务器如何将数据送回给客户机？通常情况下，服务器在接收到客户机的请求后，会专门建立一个FIFO与客户机进行通信，每个专用的FIFO都是与客户机的进程ID为基础的。<br>
+//见附图7<br>
+但是这种通信方式仍然具有弊端，服务器无法侦测客户机是否已经崩溃，因此有可能会有部分数据残留在管道内。<br>
+2、有名管道编程<br>
+有名管道的使用类似于创建一个文件，我们可以使用mkfifo()函数创建一个有名管道。<br>
+函数mkfifo()<br>
+所需头文件：#include&lt;sys/types.h&gt;<br>
+#include&lt;sys/stat.h&gt;<br>
+函数原型：int mkfifo(const char *pathname, mode_t mode)<br>
+函数参数：<br>
+pathname    要创建的有名管道的路径名与文件名<br>
+mode        创建的有名管道的文件权限码，通常用八进制数字表示<br>
+函数返回值：<br>
+成功：0<br>
+失败：-1<br>
+//Linux系统内，mkfifo同时也是一个用于创建有名管道的Shell命令。若不想调用该函数，则可以使用命令创建一个有名管道文件<br>
+示例1：编写程序，创建一个有名管道文件<br>
+#include&lt;stdio.h&gt;<br>
+#include&lt;stdlib.h&gt;<br>
+#include&lt;sys/stat.h&gt;<br>
+#include&lt;sys/types.h&gt;<br>
+int main(int argc, const char *argv[])<br>
+{<br>
+if(argc&lt;2)<br>
+{<br>
+printf(&quot;too few arguments\n&quot;);<br>
+exit(0);<br>
+}<br>
+if(mkfifo(argv[1],0664)&lt;0)<br>
+{<br>
+perror(&quot;cannot create fifo&quot;);<br>
+exit(0);<br>
+}<br>
+return 0;<br>
+}<br>
+运行该程序，则可以创建一个有名管道文件。我们可以使用ls -l命令或stat命令查看该文件的属性<br>
+//当然也可以使用mkfifo命令创建有名管道文件<br>
+创建有名管道后，我们可以使用文件IO的方式操作管道。若读取管道内的数据，则使用read()函数；若想向管道内写入数据，则使用write()函数。<br>
+示例2：在示例1的基础上，编写程序，实现两个进程使用有名管道通信<br>
+注意：为了模拟“两个没有亲缘关系的进程”，我们将代码分成两部分，一部分读管道，一部分写管道。两端代码要分别使用两个终端运行。<br>
+//写管道代码如下<br>
+//文件fifo_write.c<br>
+#include&lt;stdio.h&gt;<br>
+#include&lt;stdlib.h&gt;<br>
+#include&lt;fcntl.h&gt;<br>
+#include&lt;string.h&gt;<br>
+#include&lt;sys/stat.h&gt;<br>
+#include&lt;unistd.h&gt;<br>
+#include&lt;sys/types.h&gt;<br>
+#define MAX 256<br>
+int main(int argc, const char *argv[])<br>
+{<br>
+int fd;<br>
+char buffer[MAX]={0};<br>
+if(argc&lt;2)<br>
+{<br>
+printf(&quot;too few arguments\n&quot;);<br>
+exit(0);<br>
+}<br>
+if((fd=open(argv[1],O_WRONLY))&lt;0)//打开管道。因为需要写管道，所以使用O_WRONLY<br>
+{<br>
+perror(&quot;cannot open pipe&quot;);<br>
+exit(0);<br>
+}<br>
+printf(&quot;Please input string, if input 'quit' will stop:&quot;);//输入&quot;quit&quot;程序停止<br>
+scanf(&quot;%[^\n]&quot;,buffer);<br>
+getchar();<br>
+while(strncmp(buffer,&quot;quit&quot;,4)!=0)<br>
+{<br>
+write(fd,buffer,strlen(buffer)+1);<br>
+printf(&quot;Please input string, if input 'quit' will stop:&quot;);<br>
+scanf(&quot;%[^\n]&quot;,buffer);<br>
+getchar();<br>
+}<br>
+write(fd,buffer,strlen(buffer)+1);//将最后的&quot;quit&quot;写入管道中<br>
+close(fd);//关闭管道<br>
+return 0;<br>
+}<br>
+//读管道代码如下<br>
+//文件fifo_read.c<br>
+#include&lt;stdio.h&gt;<br>
+#include&lt;stdlib.h&gt;<br>
+#include&lt;string.h&gt;<br>
+#include&lt;sys/stat.h&gt;<br>
+#include&lt;sys/types.h&gt;<br>
+#include&lt;unistd.h&gt;<br>
+#include&lt;fcntl.h&gt;<br>
+#define MAX 256<br>
+int main(int argc, const char *argv[])<br>
+{<br>
+int nread;<br>
+if(argc&lt;2)<br>
+{<br>
+printf(&quot;too few arguments\n&quot;);<br>
+exit(0);<br>
+}<br>
+char readbuffer[MAX]={0};<br>
+int fd;<br>
+if((fd=open(argv[1],O_RDONLY))&lt;0)//打开管道。因为需要读管道，所以使用O_RDONLY<br>
+{<br>
+perror(&quot;cannot open pipe&quot;);<br>
+exit(0);<br>
+}<br>
+while(1)<br>
+{<br>
+if((nread=read(fd,readbuffer,MAX))&lt;=0)//读取出错 或 管道内已无数据<br>
+{<br>
+printf(&quot;read fifo error, will exit\n&quot;);<br>
+break;<br>
+}<br>
+if(strncmp(readbuffer,&quot;quit&quot;,4)!=0)<br>
+{<br>
+printf(&quot;read string:%s\n&quot;,readbuffer);<br>
+bzero(readbuffer,MAX);<br>
+}<br>
+else//读到&quot;quit&quot;程序停止<br>
+{<br>
+printf(&quot;read 'quit', will exit\n&quot;);<br>
+break;<br>
+}<br>
+}<br>
+close(fd);//关闭管道<br>
+return 0;<br>
+}<br>
+四、信号通信signal<br>
+1、信号通信简介<br>
+相信各位对“中断”都不陌生。信号是在软件层次上对中断机制的一种模拟，从原理上来说，进程接收信号并处理与处理器接收中断并处理是一样的。<br>
+信号通信是异步的（即非实时性的）：一个进程不必等待信号的到达。事实上，进程也不知道什么时候信号会到达。<br>
+信号通信可以直接进行用户空间进程和内核进程之间的交互，内核进程也可以通过信号知道用户空间进程发生了哪些事件。如果某个进程未处于运行态而接收到了一个信号，那么该信号会被内核保存起来，直至该进程恢复运行再将该信号传递给进程；如果一个信号被设置为阻塞，则该信号的传递会被延迟，直至其阻塞被取消才能被传递给进程。<br>
+通常情况下，以下情景会使用信号通信：<br>
+1.某些后台进程的通信。例如xinetd进程。<br>
+2.两个无亲缘关系的进程且无法使用有名管道<br>
+3.某个进程只能使用标准输入与标准输出（即无法读写管道）<br>
+信号通信最早来自对硬件中断的一种模拟，不过经POSIX的扩展后功能变得更加强大，不仅能够发送或接收信号，信号本身还可以附加信息。<br>
+信号的产生有硬件来源与软件来源。硬件来源常见的有按下键盘、定时器到时、硬件故障等；软件来源常见的有信号处理函数、非法操作等。我们可以使用kill -l命令查看所有信号与编号，其中1<sub>31是传统UNIX支持的信号，32</sub>63是后来扩充的信号。<br>
+//部分常见的信号与其含义见附表2<br>
+进程可以有三种方式来响应一个信号：<br>
+1.忽略信号：即对信号不做任何处理。但是SIGKILL与SIGSTOP信号不能被忽略。<br>
+2.捕捉信号：自定义信号处理函数，当接收到信号时执行相应的信号处理函数。<br>
+3.执行默认操作：Linux对每种信号都规定了默认操作，当接收到信号时进程执行信号的默认操作。<br>
+2、信号通信编程——信号的发送<br>
+1）发送信号：kill()函数与raise()函数<br>
+kill()函数与我们之前学习过的kill命令一样，都可以发送信号给一个进程或进程组（实际上，Shell命令的kill命令就是内核通过kill()函数实现的）。需要注意的是，kill()函数不仅可以发送终止进程的信号，它也可以发送其他信号。<br>
+raise()函数也可以发送一个信号，不过与kill()函数不同的是，raise()函数只能让进程向自身发送信号。<br>
+函数kill()<br>
+所需头文件：#include&lt;sys/types.h&gt;<br>
+#include&lt;signal.h&gt;<br>
+函数原型：int kill(pid_t pid, int sig)<br>
+函数参数：<br>
+pid：<br>
+正数    发送信号给进程标识符为pid的进程<br>
+0        信号被发送到所有和当前进程在同一个进程组的进程<br>
+-1        信号被发送给所有的有权给其发送信号的进程（除了1号init进程）<br>
+&lt;-1        信号发送给进程组号为-pid的每个进程<br>
+sig    需要发送的信号。若为0则不会送出信号，但是系统会执行错误检查。通常使用0来检测某个进程是否正在运行<br>
+函数返回值：<br>
+成功：0<br>
+失败：-1</p>
+<pre><code>函数raise()
+所需头文件：#include&lt;signal.h&gt;
+函数原型：int raise(int sig)
+函数参数：
+    sig    需要发送的信号。若为0则不会送出信号，但是系统会执行错误检查。通常使用0来检测某个进程是否正在运行
+函数返回值：
+    成功：0
+    失败：-1
+//函数raise()等价于kill(getpid(),sig)或pthread_kill(pthread_self(),sig)
+</code></pre>
+<p>示例：演示kill()函数与raise()函数。首先创建子进程，在子进程内调用raise()函数发送一个SIGSTOP信号使自身暂停；父进程中调用kill()函数向子进程发送信号SIGKILL<br>
+#include&lt;stdio.h&gt;<br>
+#include&lt;stdlib.h&gt;<br>
+#include&lt;sys/types.h&gt;<br>
+#include&lt;sys/wait.h&gt;<br>
+#include&lt;signal.h&gt;<br>
+int main(int argc, const char *argv[])<br>
+{<br>
+pid_t pid;<br>
+if((pid=fork())&lt;0)<br>
+{<br>
+perror(&quot;cannot fork&quot;);<br>
+exit(0);<br>
+}<br>
+else if(pid<mark>0)//子进程<br>
+{<br>
+printf(&quot;This is Child Process %d, waiting for any signal.\n&quot;,getpid());<br>
+raise(SIGSTOP);//子进程被暂停<br>
+printf(&quot;Child Process has been paused\n&quot;);//注意这句话并不会输出<br>
+exit(0);<br>
+}<br>
+else//父进程<br>
+{<br>
+int ret;<br>
+sleep(5);//让子进程先运行<br>
+ret = waitpid(pid,NULL,WNOHANG);<br>
+if(ret</mark>0)//如果子进程在运行<br>
+{<br>
+kill(pid,SIGKILL);//向子进程发送SIGKILL，杀死子进程<br>
+printf(&quot;Parent Process kill Child Process %d\n&quot;,pid);<br>
+}<br>
+waitpid(pid,NULL,0);//回收子进程<br>
+exit(0);<br>
+}<br>
+return 0;<br>
+}<br>
+示例2：在示例1的基础上，将父进程发送的信号换成SIGCONT，观察效果<br>
+#include&lt;stdio.h&gt;<br>
+#include&lt;stdlib.h&gt;<br>
+#include&lt;sys/types.h&gt;<br>
+#include&lt;sys/wait.h&gt;<br>
+#include&lt;signal.h&gt;<br>
+int main(int argc, const char *argv[])<br>
+{<br>
+pid_t pid;<br>
+if((pid=fork())&lt;0)<br>
+{<br>
+perror(&quot;cannot fork&quot;);<br>
+exit(0);<br>
+}<br>
+else if(pid<mark>0)//子进程<br>
+{<br>
+printf(&quot;This is Child Process %d, waiting for any signal.\n&quot;,getpid());<br>
+raise(SIGSTOP);//子进程被暂停<br>
+printf(&quot;Child Process has been paused\n&quot;);//注意这句话会输出<br>
+exit(0);<br>
+}<br>
+else//父进程<br>
+{<br>
+int ret;<br>
+sleep(5);//让子进程先运行<br>
+ret = waitpid(pid,NULL,WNOHANG);<br>
+if(ret</mark>0)//如果子进程在运行<br>
+{<br>
+kill(pid,SIGCONT);//向子进程发送SIGCONT，子进程恢复运行<br>
+}<br>
+waitpid(pid,NULL,0);//回收子进程<br>
+exit(0);<br>
+}<br>
+return 0;<br>
+}<br>
+3、信号通信编程——定时器信号<br>
+alarm()函数也称为闹钟函数，它可以在进程中设定一个定时器，当定时器计时结束时，它就会向进程发送SIGALRM信号，并且在终端输出&quot;Alarm clock&quot;表示计时结束。<br>
+注意：一个进程只能有一个闹钟时间，如果在调用alarm()函数前已经设定过闹钟时间，则旧的闹钟时间会被新的闹钟时间替代。<br>
+pause()函数用于将该进程挂起直至接收到某个信号为止。<br>
+函数alarm()<br>
+所需头文件：#include&lt;unistd.h&gt;<br>
+函数原型：unsigned int alarm(unsigned int second)<br>
+函数参数：<br>
+second    指定倒计时秒数，在second秒后发送SIGALRM信号<br>
+函数返回值：<br>
+成功：0（未设置过闹钟时间） 或 上个闹钟时间的剩余时间（设置过闹钟时间）<br>
+失败：-1</p>
+<pre><code>函数pause()
+所需头文件：#include&lt;unistd.h&gt;
+函数原型：int pause()
+函数参数：无
+函数返回值：-1，并且把errno设定为EINTR（仅会在接收到信号后返回）
+</code></pre>
+<p>示例：演示alarm()函数与pause()函数<br>
+#include&lt;stdio.h&gt;<br>
+#include&lt;unistd.h&gt;<br>
+#include&lt;stdlib.h&gt;<br>
+int main()<br>
+{<br>
+alarm(5);//设定闹钟时间5s<br>
+pause();//将进程挂起，等待闹钟<br>
+printf(&quot;I should wake up\n&quot;);//注意此语句不会执行<br>
+return 0;<br>
+}<br>
+执行程序，我们会发现printf()内的字符串不会被打印，而是会打印&quot;Alarm clock&quot;。这是因为SIGALRM信号默认的处理方式是终止程序，因此程序在printf()执行前就已经退出了。<br>
+4、信号通信编程——信号处理函数<br>
+在刚才的学习过程中，我们发现绝大多数的信号的默认处理都是终止进程。如果想要让进程接收信号后做出不同的响应，则需要设置信号处理函数。<br>
+信号处理函数主要有两个：signal()函数和sigaction()函数。signal()函数比较简单，只需指定信号类型与信号处理函数即可，但是它只能用于编号前31种信号处理，且不能通过信号传递信息。而sigaction()函数可以看做是signal()函数的升级版，功能比signal()函数更加健全强大，通常我们使用的都是sigaction()函数。<br>
+//注意：signal()是标准C库函数，遵循标准C库；而sigaction()属于Linux系统调用，遵循POSIX标准。因此如果考虑到程序的移植性问题，需要选择合适的函数，如果该程序必须在非POSIX标准的系统上运行，则必须选择signal()函数。<br>
+函数signal()<br>
+所需头文件：#include&lt;signal.h&gt;<br>
+函数原型：<br>
+typedef void (*sighandler_t)(int);<br>
+sighandler_t signal(int signum, sighandler_t handler);<br>
+函数参数：<br>
+signum    指定信号<br>
+handler    指定接收信号后的处理方式<br>
+SIG_IGN：忽略信号<br>
+SIG_DFL：采用默认方式处理信号<br>
+其他：自定义信号处理函数<br>
+函数返回值：<br>
+成功：以前的信号处理函数<br>
+失败：SIG_ERR</p>
+<p>示例1：使用signal()函数捕捉信号，并执行相应的信号处理函数。其中SIGINT代表ctrl+c组合键，SIGQUIT代表ctrl+\组合键。<br>
+#include&lt;stdio.h&gt;<br>
+#include&lt;stdlib.h&gt;<br>
+#include&lt;signal.h&gt;<br>
+void handler(int sig_no)//自定义信号处理函数<br>
+{<br>
+if(sig_no == SIGINT)<br>
+{<br>
+printf(&quot;Got a signal: SIGINT(ctrl+c)\n&quot;);<br>
+}<br>
+else if(sig_no == SIGQUIT)<br>
+{<br>
+printf(&quot;Got a signal: SIGQUIT(ctrl+\)\n&quot;);<br>
+}<br>
+}<br>
+int main()<br>
+{<br>
+signal(SIGINT,handler);<br>
+signal(SIGQUIT,handler);<br>
+printf(&quot;Waiting for signal SIGINT or SIGQUIT……\n&quot;);<br>
+pause();//等待接收信号<br>
+return 0;<br>
+}<br>
+练习：若将程序内主函数的&quot;signal(信号,handler);&quot;改为&quot;signal(信号,SIG_IGN);&quot;，则该程序会出现什么效果？</p>
+<pre><code>函数sigaction()
+所需头文件：#include&lt;signal.h&gt;
+函数原型：int sigaction(int signum, const struct sigaction *act, struct sigaction *oldact);
+函数参数：
+    signum    指定信号，除了SIGKILL和SIGSTOP
+    act        （若非NULL）指向sigaction结构体的指针（具体定义见下），包含对信号的处理。需要使用地址传递传参
+    oldact    （若非NULL）同act，不过保存的是对原先信号的处理方式
+函数返回值：
+    成功：0
+    失败：-1
+</code></pre>
+<p>/<strong><strong><strong><strong><strong><strong><strong><strong><strong><strong>结构体struct sigaction简介</strong></strong></strong></strong></strong></strong></strong></strong></strong></strong>*/<br>
+在sigaction()函数中，第二个和第三个参数需要的struct sigaction类型结构体如下：<br>
+struct sigaction<br>
+{<br>
+void (*sa_handler)(int);//信号处理函数<br>
+void (*sa_sigaction)(int, siginfo_t <em>, void</em>);//不常见，当flags=SA_SIGINFO时生效，代替sa_handler<br>
+sigset_t sa_mask;//屏蔽信号<br>
+int sa_flags;//信号处理行为<br>
+void (<em>sa_restorer)(void);//不常见（基本已被废弃），当flags=SA_SIGINFO时才会使用<br>
+};<br>
+//注：在某些操作系统内，可能sa_handler和sa_sigaction两个成员合并，只保留一个。因此注意二者不要同时设置避免出现冲突<br>
+其中各结构体成员的具体含义如下：<br>
+1.sa_handler：<br>
+表示一个函数指针，指向信号处理函数。用法等同于signal()函数的第二个参数<br>
+2.sa_sigaction：<br>
+另一个函数指针，指向信号处理函数。由于该类型的函数指针有三个参数，因此功能更加强大，但是通常情况下不会使用。只有当第四个参数flags=SA_SIGINFO时才会使用，替代sa_handler；否则以sa_handler为准。<br>
+sa_sigaction需要的第二个参数siginfo_t的结构体类型定义如下：<br>
+siginfo_t<br>
+{<br>
+int          si_signo;    /</em> Signal number <em>/<br>
+int          si_errno;    /</em> An errno value <em>/<br>
+int          si_code;     /</em> Signal code <em>/<br>
+int          si_trapno;   /</em> Trap number that caused<br>
+hardware-generated signal<br>
+(unused on most architectures) <em>/<br>
+pid_t      si_pid;      /</em> Sending process ID <em>/<br>
+uid_t      si_uid;      /</em> Real user ID of sending process <em>/<br>
+int          si_status;   /</em> Exit value or signal <em>/<br>
+clock_t      si_utime;    /</em> User time consumed <em>/<br>
+clock_t      si_stime;    /</em> System time consumed <em>/<br>
+sigval_t  si_value;    /</em> Signal value <em>/<br>
+int          si_int;      /</em> POSIX.1b signal */<br>
+void      <em>si_ptr;     /</em> POSIX.1b signal <em>/<br>
+int          si_overrun;  /</em> Timer overrun count; POSIX.1b timers <em>/<br>
+int          si_timerid;  /</em> Timer ID; POSIX.1b timers */<br>
+void      <em>si_addr;    /</em> Memory location which caused fault <em>/<br>
+long      si_band;     /</em> Band event (was int in<br>
+glibc 2.3.2 and earlier) <em>/<br>
+int          si_fd;       /</em> File descriptor <em>/<br>
+short      si_addr_lsb; /</em> Least significant bit of address<br>
+(since kernel 2.6.32) */<br>
+}<br>
+3.sa_mask：<br>
+指定在信号处理函数运行期间需要被屏蔽的信号，被屏蔽的信号在信号处理函数执行期间不会被响应。<br>
+4.sa_flags：<br>
+用于指定信号处理行为，有固定的取值。若需要多个取值则可以使用“按位或”连接。取值与对应的意义如下：<br>
+SA_NOCLDSTOP（不常用）：<br>
+如果 signum 是 SIGCHLD，当子进程停止时 (即当它们接收到SIGSTOP、SIGTSTP、SIGTTIN 或 SIGTTOU) 或恢复 (即当它们接收到 SIGCONT) 时不接收通知。此标志仅在定义了 SIGCHLD 的处理程序时才有意义。<br>
+SA_NOCLDWAIT(Linux 2.6后新增)（不常用）：<br>
+如果 signum 是 SIGCHLD，当子进程停止时不会将子进程设置成僵尸进程。此标志仅在定义了 SIGCHLD 的处理程序时 或 将信号的处理设置成SIG_DFL时才有意义。<br>
+SA_NODEFER：<br>
+当接收到此信号时，执行信号处理函数时不会屏蔽该信号，即在信号处理函数执行期间仍然能发出该信号。此标志仅在已经定义了信号处理函数时才有意义。<br>
+SA_ONSTACK（不常用）：<br>
+在sigaltstack(2)提供的备用信号堆栈上调用信号处理程序。如果备用堆栈不可用，将使用默认堆栈。此标志仅在已经定义了信号处理函数时才有意义。<br>
+SA_RESETHAND：<br>
+调用信号处理程序后，重新将信号操作恢复到默认操作。此标志仅在已经定义了信号处理函数时才有意义。<br>
+SA_RESTART：<br>
+重新启动某些被信号中断的系统调用。此标志仅在已经定义了信号处理函数时才有意义。<br>
+SA_SIGINFO(Linux 2.2后新增)（不常用）：<br>
+不使用sa_handler，而使用sa_sigaction。此标志仅在已经定义了信号处理函数时才有意义。<br>
+5.sa_restorer：被废弃<br>
+/**<strong><strong><strong><strong><strong><strong><strong><strong><strong>结构体struct sigaction简介end</strong></strong></strong></strong></strong></strong></strong></strong></strong>/<br>
+示例2：使用sigaction()函数功能完成示例1<br>
+#include&lt;stdio.h&gt;<br>
+#include&lt;stdlib.h&gt;<br>
+#include&lt;signal.h&gt;<br>
+void handler(int sig_no)<br>
+{<br>
+if(sig_no == SIGINT)<br>
+{<br>
+printf(&quot;Got a signal: SIGINT(ctrl+c)\n&quot;);<br>
+}<br>
+else if(sig_no == SIGQUIT)<br>
+{<br>
+printf(&quot;Got a signal: SIGQUIT(ctrl+\)\n&quot;);<br>
+}<br>
+}<br>
+int main()<br>
+{<br>
+struct sigaction action;<br>
+action.sa_handler = handler;<br>
+sigaction(SIGINT,&amp;action,NULL);//注意sigaction函数第二个参数的使用方法<br>
+sigaction(SIGQUIT,&amp;action,NULL);//注意sigaction函数第二个参数的使用方法<br>
+printf(&quot;Wating for signal SIGINT or SIGQUIT……\n&quot;);<br>
+pause();<br>
+return 0;<br>
+}<br>
+示例3：使用sigaction()函数，接收其他进程向本进程发送的SIGUSR1和SIGUSR2信号并获得打印相关信息。SIGUSR1和SIGUSR2信号是Linux系统预留给用户定义的信号，本身并无含义。<br>
+#include &lt;stdio.h&gt;<br>
+#include &lt;unistd.h&gt;<br>
+#include &lt;signal.h&gt;<br>
+#include &lt;errno.h&gt;<br>
+#define MAX 512<br>
+void sig_usr(int signum)<br>
+{<br>
+if(signum == SIGUSR1)<br>
+{<br>
+printf(&quot;SIGUSR1 received\n&quot;);<br>
+}<br>
+else if(signum == SIGUSR2)<br>
+{<br>
+printf(&quot;SIGUSR2 received\n&quot;);<br>
+}<br>
+}<br>
+int main()<br>
+{<br>
+char buf[MAX];<br>
+int n;<br>
+struct sigaction sa_usr;<br>
+sa_usr.sa_flags = 0;//可以将此处改成SA_RESTART<br>
+sa_usr.sa_handler = sig_usr;//设置信号处理函数</p>
+<pre><code>sigaction(SIGUSR1, &amp;sa_usr, NULL);//接收信号SIGUSR1
+sigaction(SIGUSR2, &amp;sa_usr, NULL);//接收信号SIGUSR2
+printf(&quot;My PID is %d\n&quot;, getpid());     
+while(1)
+{
+    if((n = read(STDIN_FILENO, buf, MAX-1))&lt;0)
+    {
+        perror(&quot;read is interrupted by signal&quot;);
+    }
+    else
+    {
+        buf[n] = '\0';
+        printf(&quot;%d bytes read: %s\n&quot;, n, buf);
+    }
+}
+return 0;
+</code></pre>
+<p>}<br>
+需要注意，我们应该在一个终端运行该程序，在另一个终端运行kill命令发送信号。kill命令为<br>
+kill -USR1 进程ID号（发送SIGUSR1信号） 或 kill -USR2 进程ID号（发送SIGUSR2信号）<br>
+若sa_flags设置为0，我们会发现程序会输出：<br>
+SIGUSR1 received<br>
+read is interrupted by signal: Interrupted system call<br>
+这是因为系统调用read()被刚才的信号打断，信号处理程序默认情况下是不会恢复系统调用的运行的。如果需要让系统调用read()恢复运行，可以将sa_usr.sa_flags设置为SA_RESTART。<br>
+练习：不使用系统的kill命令，自己编程实现向示例3程序发送SIGUSR1或SIGUSR2信号，其中发送的信号类型与目标进程ID通过命令行参数传递。<br>
+答案：<br>
+//运行程序：./kill SIGUSR1或SIGUSR2 目标进程ID<br>
+#include&lt;stdio.h&gt;<br>
+#include&lt;stdlib.h&gt;<br>
+#include&lt;sys/types.h&gt;<br>
+#include&lt;sys/wait.h&gt;<br>
+#include&lt;signal.h&gt;<br>
+#include&lt;string.h&gt;<br>
+int main(int argc, const char *argv[])<br>
+{<br>
+pid_t pid;<br>
+if(argc&lt;3)<br>
+{<br>
+printf(&quot;too few arguments\n&quot;);<br>
+printf(&quot;Usage: ./kill <SIGUSR1>or<SIGRUSR2> <PID>\n&quot;);<br>
+exit(0);<br>
+}<br>
+pid = atoi(argv[2]);<br>
+if(strcmp(argv[1],&quot;SIGUSR1&quot;)==0)<br>
+{<br>
+kill(pid,SIGUSR1);<br>
+}<br>
+else if(strcmp(argv[1],&quot;SIGUSR2&quot;)==0)<br>
+{<br>
+kill(pid,SIGUSR2);<br>
+}<br>
+else<br>
+{<br>
+printf(&quot;Input signal error!\n&quot;);<br>
+}<br>
+return 0;<br>
+}</p>
+
+              </div>
+              <div class="toc-container">
+                
+              </div>
+            </div>
+          </article>
+        </div>
+
+        
+          <div class="next-post">
+            <div class="next">下一篇</div>
+            <a href="https://zhuansun.github.io/post/hello-gridea/">
+              <h3 class="post-title">
+                Hello Gridea
+              </h3>
+            </a>
+          </div>
+        
+
+        
+
+        <div class="site-footer">
+  Powered by <a href="https://github.com/getgridea/gridea" target="_blank">Gridea</a>
+  <a class="rss" href="https://zhuansun.github.io/atom.xml" target="_blank">
+    <i class="ri-rss-line"></i> RSS
+  </a>
+</div>
+
+      </div>
+    </div>
+
+    <script>
+      hljs.initHighlightingOnLoad()
+
+      let mainNavLinks = document.querySelectorAll(".markdownIt-TOC a");
+
+      // This should probably be throttled.
+      // Especially because it triggers during smooth scrolling.
+      // https://lodash.com/docs/4.17.10#throttle
+      // You could do like...
+      // window.addEventListener("scroll", () => {
+      //    _.throttle(doThatStuff, 100);
+      // });
+      // Only not doing it here to keep this Pen dependency-free.
+
+      window.addEventListener("scroll", event => {
+        let fromTop = window.scrollY;
+
+        mainNavLinks.forEach((link, index) => {
+          let section = document.getElementById(decodeURI(link.hash).substring(1));
+          let nextSection = null
+          if (mainNavLinks[index + 1]) {
+            nextSection = document.getElementById(decodeURI(mainNavLinks[index + 1].hash).substring(1));
+          }
+          if (section.offsetTop <= fromTop) {
+            if (nextSection) {
+              if (nextSection.offsetTop > fromTop) {
+                link.classList.add("current");
+              } else {
+                link.classList.remove("current");    
+              }
+            } else {
+              link.classList.add("current");
+            }
+          } else {
+            link.classList.remove("current");
+          }
+        });
+      });
+
+    </script>
+  </body>
+</html>
